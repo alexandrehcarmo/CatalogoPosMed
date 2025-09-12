@@ -95,6 +95,15 @@
           <span class="small">Rápido</span>
         </div>
         <div class="toc-list" id="toc_by_uf" style="margin-top:12px"></div>
+<!-- INÍCIO: Top 10 - Instituições mais buscadas (base: catálogo) -->
+<div style="margin-top:14px">
+  <strong>Top 10 - Instituições mais buscadas (por oferta)</strong>
+  <div id="top10_list" style="margin-top:8px;color:#333;font-size:13px">
+    <div class="small" id="top10_status">Gerando Top 10 local...</div>
+  </div>
+</div>
+<!-- FIM: Top 10 -->
+
       </aside>
 
       <main class="panel" id="main_panel">
@@ -104,8 +113,8 @@
       </main>
     </div>
     <footer style="margin-top:18px;text-align:center;color:var(--mut);font-size:12px;padding:8px">
-    Catálogo de Pós Médicas Lato Sensu reconhecidas pelo MEC - Desenvolvido por Alexandre Carmo - Todos os Direitos Reservados - 2025/09 v2.
-    &nbsp; <a id="mec_info_link" href="#" style="color: #0b5d8a; text-decoration: underline; margin-left:10px;">Saiba mais sobre reconhecimento pelo MEC</a>
+    Catálogo de Pós Médicas Lato Sensu reconhecidas pelo MEC* - Desenvolvido por Alexandre Carmo - Todos os Direitos Reservados - 2025/09 v3.
+    &nbsp; <a id="mec_info_link" href="#" style="color: #0b5d8a; text-decoration: underline; margin-left:10px;">*Saiba mais sobre reconhecimento pelo MEC</a>
     </footer>
 
   </div>
@@ -529,7 +538,7 @@ const ENTRIES = [
     "total_egressos": "0",
     "coordenador": "Maria Luisa De Barros Ferreira Goncalves",
     "situacao": "Ativo",
-    "normalizado": "ABORDAGEM MULTIDLSCLPLINAI EM ONCOLOGIA"
+    "normalizado": "ABORDAGEM MULTIDISCIPLINAR EM ONCOLOGIA"
   },
   {
     "id": 23,
@@ -108834,6 +108843,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 2) agora inicializar a interface (populateUFs e render)
   populateUFs();
   applyFiltersAndRender();
+  // --- novo: calcular e renderizar Top10 local a partir do catálogo (sem APIs) ---
+  try {
+    const localTop = computeTop10FromCatalog(10);
+    renderTop10(localTop);
+  } catch (err) {
+    console.warn('Falha ao gerar Top10 local', err);
+    const st = document.getElementById('top10_status');
+    if (st) st.textContent = 'Erro ao gerar Top10 local';
+  }
+  // --- fim ---
+
 
   // 3) manter o handler de resize como estava
   window.addEventListener('resize', () => { state.perPage = perPageForWidth(); applyFiltersAndRender(); });
@@ -108982,6 +109002,185 @@ function institutionDisplay(it){
   const label = sigTxt + instRaw;
   return `<a href="${escapeHtml(finalUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
 }
+// --- INÍCIO: ranking local avançado (corrigido - listeners seguros) ---
+function normalizeCourseName(name){
+  if(!name) return '';
+  try{ name = String(name); }catch(e){ return ''; }
+  // trim + collapse spaces
+  name = name.trim().replace(/\s+/g,' ');
+  // remove parenthetical content and long dash fragments
+  name = name.replace(/\(.*?\)/g,'').replace(/- .*/g,'').trim();
+  // remove ordinal/version tokens like " I", " II", " III", roman numerals and simple numeric tokens
+  name = name.replace(/\b(I|II|III|IV|V|VI|VII|VIII|IX|X)\b/gi,'').replace(/\b[0-9]+\b/g,'');
+  // remove trailing single-letter suffixes often used (like " H", " R", etc.)
+  // Example: "DISFAGIA H" -> "DISFAGIA"
+  name = name.replace(/\s+\b[A-Z]\b$/i, '');
+  // remove common single-letter 'H' or 'H.' with optional trailing punctuation
+  name = name.replace(/\s+H[\.]?$/i, '');
+  // deaccent and normalize unicode
+  name = name.normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+  // remove non-alphanumeric (keep spaces) and collapse spaces again
+  name = name.replace(/[^A-Z0-9 ]/ig,' ').replace(/\s+/g,' ').trim();
+  // For ultra-common patterns like trailing " H" following a longer phrase with repeated token " H",
+  // the above rules cover them. If you need more custom rules add them here.
+  return name.toUpperCase();
+}
+
+function getStateFromEntry(e){
+  if(!e) return '';
+  return (e.uf || e.UF || e.estado || e.estado_sigla || e.sigla_uf || e.state || e.sigla || '').toString().trim().toUpperCase();
+}
+
+// helper to trigger search as if typed in the search field
+function triggerSearch(query){
+  if(typeof query !== 'string') query = String(query || '');
+  const inp = document.getElementById('q');
+  if(inp){
+    inp.value = query;
+    try{ state.q = query; state.page = 1; }catch(e){}
+    try{ applyFiltersAndRender(); }catch(e){}
+    try{ inp.focus(); }catch(e){}
+  }
+}
+
+// Computa top10 de instituições agrupando cursos por nome normalizado e também calcula
+// um ranking global de cursos por número distinto de estados onde aparecem.
+function computeTop10FromCatalog(limit = 10) {
+  const instMap = new Map();
+  const courseStates = new Map(); // normalizedCourse -> Set of states
+
+  (DATA_ENTRIES || []).forEach(e => {
+    const instName = String(e.instituicao || '').trim();
+    if(!instName) return;
+    const instKey = instName.toUpperCase();
+    if(!instMap.has(instKey)) instMap.set(instKey, { name: instName, entries: [], courseMap: new Map() });
+    const inst = instMap.get(instKey);
+    inst.entries.push(e);
+
+    const rawCourse = e.normalizado_display || e.normalizado || e.denominacao || e.codigo_curso || '';
+    const norm = normalizeCourseName(rawCourse);
+    if(!norm) return;
+    if(!inst.courseMap.has(norm)){
+      inst.courseMap.set(norm, { canonical: rawCourse.toString().trim(), variants: 0, states: new Set() });
+    }
+    const cobj = inst.courseMap.get(norm);
+    cobj.variants += 1;
+    const st = getStateFromEntry(e) || 'UNKN';
+    cobj.states.add(st);
+
+    if(!courseStates.has(norm)) courseStates.set(norm, new Set());
+    courseStates.get(norm).add(st);
+  });
+
+  const instArr = Array.from(instMap.values()).map(inst => {
+    const courses = Array.from(inst.courseMap.entries()).map(([norm, c])=> ({
+      norm, canonical: c.canonical, variants: c.variants, statesCount: c.states.size, states: Array.from(c.states).filter(s=>s && s!=='UNKN')
+    }));
+    courses.sort((a,b)=> (b.statesCount - a.statesCount) || (b.variants - a.variants) || a.canonical.localeCompare(b.canonical,'pt-BR'));
+    return { name: inst.name, totalEntries: inst.entries.length, courses };
+  });
+
+  instArr.sort((a,b)=> (b.totalEntries - a.totalEntries) || a.name.localeCompare(b.name,'pt-BR'));
+  const top = instArr.slice(0, limit);
+
+  const globalCourseRanking = Array.from(courseStates.entries()).map(([norm, statesSet])=> ({ norm, statesCount: statesSet.size }));
+  globalCourseRanking.sort((a,b)=> b.statesCount - a.statesCount || a.norm.localeCompare(b.norm,'pt-BR'));
+
+  return { top, globalCourseRanking };
+}
+
+function renderTop10(resultObj) {
+
+  const wrap = document.getElementById('top10_list');
+  if (!wrap) return;
+  if(!resultObj || !Array.isArray(resultObj.top) || resultObj.top.length === 0){
+    wrap.innerHTML = '<div class="small">Nenhuma informação.</div>';
+    return;
+  }
+  const list = resultObj.top;
+  const rows = list.map((inst, idx) => {
+    const cursosHtml = (inst.courses || []).slice(0,8).map(c => {
+      const variantBadge = c.variants && c.variants>1 ? ' <span style=\"color:#666;font-size:12px\">['+c.variants+' var.]</span>' : '';
+      return '<div style="font-size:12px;margin-top:6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;max-width:420px;line-height:1.15em">• <strong>'+escapeHtml((c.canonical||'').toString().toUpperCase())+'</strong>'+variantBadge+'</div>';
+
+    }).join('');
+    // institution name clickable using data attribute (no inline onclick)
+    const instSafe = encodeURIComponent(inst.name || '');
+    const instClickable = '<a href=\"#\" class=\"top10-inst\" data-inst=\"'+instSafe+'\" style=\"text-decoration:none;color:inherit\">'+ escapeHtml(inst.name) +'</a>';
+    return '<div style=\"padding:8px 6px;border-bottom:1px solid #eee\">' +
+      '<div style=\"font-weight:700\">'+(idx+1)+'. '+instClickable+' <span style=\"font-weight:400;color:#666;font-size:12px\">('+inst.totalEntries+' registros)</span></div>' +
+      (cursosHtml || '<div class=\"small\" style=\"color:#666\">Nenhum curso do catálogo correspondido</div>') +
+    '</div>';
+  }).join('');
+
+  wrap.innerHTML = rows;
+  const st = document.getElementById('top10_status');
+  if (st) st.style.display = 'none';
+
+  // attach click listeners for institution links (event delegation safe)
+  try{
+    const wrapEl = document.getElementById('top10_list');
+    if(wrapEl){
+      wrapEl.querySelectorAll('.top10-inst').forEach(a=>{
+        a.addEventListener('click', function(ev){
+          ev.preventDefault();
+          const qv = decodeURIComponent(this.dataset.inst || '');
+          triggerSearch(qv);
+        });
+      });
+    }
+  }catch(e){ console.warn('attach top10-inst listeners failed', e); }
+
+  // update right-side global courses sidebar (top 10)
+  try{
+    renderGlobalCourseSidebar(resultObj.globalCourseRanking || []);
+  }catch(e){ console.warn('renderGlobalCourseSidebar failed', e); }
+
+}
+
+// Render a right-side floating sidebar with top courses (10) clickable to trigger search
+function renderGlobalCourseSidebar(globalRanking){
+
+  const max = 10;
+  let side = document.getElementById('top_courses_sidebar');
+  if(!side){
+    side = document.createElement('div');
+    side.id = 'top_courses_sidebar';
+    // fixed at right, non-closable, minimal visual impact
+    side.style.cssText = 'position:fixed;right:18px;top:120px;width:300px;max-height:70vh;overflow:auto;background:#fff;padding:10px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,0.08);z-index:9998;font-size:13px';
+    side.innerHTML = '<div style=\"display:flex;flex-direction:column\"><strong>Top 10 - Cursos (por cobertura)</strong><div id=\"top_courses_body\" style=\"margin-top:8px\">Carregando...</div></div>';
+    document.body.appendChild(side);
+  }
+  const body = document.getElementById('top_courses_body');
+  if(!body) return;
+  if(!Array.isArray(globalRanking) || globalRanking.length === 0){
+    body.innerHTML = '<div class=\"small\">Sem dados</div>';
+    return;
+  }
+  const list = globalRanking.slice(0,max).map((g,i)=> {
+    const label = g.norm;
+    const safe = encodeURIComponent(label);
+    return '<div style=\"margin-bottom:8px\"><a href=\"#\" class=\"top-course\" data-course=\"'+safe+'\" style=\"text-decoration:none;color:#1a0dab\">'+(i+1)+'. '+escapeHtml(label)+'</a> <span style=\"color:#666;font-size:12px\">('+g.statesCount+' estados)</span></div>';
+  }).join('');
+  body.innerHTML = list;
+
+  // attach listeners for courses
+  try{
+    side.querySelectorAll('.top-course').forEach(a=>{
+      a.addEventListener('click', function(ev){
+        ev.preventDefault();
+        const qv = decodeURIComponent(this.dataset.course || '');
+        triggerSearch(qv);
+      });
+    });
+  }catch(e){ console.warn('attach top-course listeners failed', e); }
+
+}
+// --- FIM: ranking local avançado (corrigido) ---
+
+
+
+
 
 function renderUfsFooter(ufsArray, targetSelector='#footer-ufs'){
   const el = document.querySelector(targetSelector);
@@ -109014,8 +109213,123 @@ if (typeof Fuse !== 'undefined') {
 }
 
 function searchEntries(qstr){
-  if(!qstr || !qstr.trim()) return DATA_ENTRIES.slice();
-  return fuse.search(qstr).map(r=>r.item);
+  if(!qstr || !qstr.toString().trim()) return Array.isArray(DATA_ENTRIES) ? DATA_ENTRIES.slice() : [];
+
+  const qRaw = String(qstr);
+  const q = qRaw.trim();
+  const qUpper = q.toUpperCase();
+  const qLower = q.toLowerCase();
+  const compactQ = q.replace(/\s+/g, '');
+
+  // normaliza removendo tudo que não for letra/número e upper
+  function normTok(s){
+    if(!s) return '';
+    return s.toString().toUpperCase().replace(/[^A-Z0-9]/g,'');
+  }
+
+  // extrai conteúdo entre parênteses
+  function parenthesesTokens(s){
+    if(!s) return [];
+    const m = s.match(/\(([^)]+)\)/g);
+    if(!m) return [];
+    return m.map(x => x.replace(/^\(|\)$/g,'').trim()).filter(Boolean);
+  }
+
+  const qNorm = normTok(compactQ || qUpper);
+
+  // heurística de sigla / acrônimo quando query curta e sem espaços
+  const isLikelyAcronym = /^[A-Z0-9]{1,10}$/i.test(compactQ) && compactQ.length >= 2;
+
+  if(isLikelyAcronym){
+    const entries = Array.isArray(DATA_ENTRIES) ? DATA_ENTRIES : [];
+    const matches = [];
+
+    for(const e of entries){
+      const candidates = [
+        e.sigla, e.sigla_instituicao, e.acronimo, e.acronimo_instituicao,
+        e.instituicao, e.nome_instituicao, e.razao_social, e.nome
+      ];
+
+      let matched = false;
+      for(const raw of candidates){
+        if(!raw) continue;
+        const s = raw.toString();
+        const sNorm = normTok(s);
+        if(!sNorm) continue;
+
+        // exato ou includes (case-insensitive, usando normalizado)
+        if(sNorm === qNorm || sNorm.indexOf(qNorm) !== -1 || qNorm.indexOf(sNorm) !== -1){
+          matched = true; break;
+        }
+
+        // conteúdos entre parênteses
+        const par = parenthesesTokens(s);
+        for(const p of par){
+          const pNorm = normTok(p);
+          if(pNorm === qNorm || pNorm.indexOf(qNorm) !== -1 || qNorm.indexOf(pNorm) !== -1){
+            matched = true; break;
+          }
+        }
+        if(matched) break;
+
+        // tokens do nome
+        const tokens = s.toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean);
+        for(const t of tokens){
+          if(normTok(t) === qNorm){
+            matched = true; break;
+          }
+        }
+        if(matched) break;
+
+        // fallback: compacta nome e checa contém
+        const compactName = s.toUpperCase().replace(/[^A-Z0-9]/g,'');
+        if(compactName.indexOf(qNorm) !== -1 || qNorm.indexOf(compactName) !== -1){
+          matched = true; break;
+        }
+      }
+
+      if(matched) matches.push(e);
+    }
+
+    if(matches.length > 0) return matches;
+  }
+
+  // fallback: usar Fuse se disponível
+  try{
+    if(typeof fuse !== 'undefined' && fuse && typeof fuse.search === 'function'){
+      const res = fuse.search(qRaw);
+      if(Array.isArray(res)) return res.map(r=> r && r.item ? r.item : r);
+    }
+  }catch(e){
+    // ignora erro e segue
+  }
+
+  // fallback simples por contains (case-insensitive)
+  try{
+    return (Array.isArray(DATA_ENTRIES) ? DATA_ENTRIES : []).filter(i => {
+      const fields = [
+        i.normalizado_display, i.normalizado, i.denominacao, i.codigo_curso,
+        i.instituicao, i.nome_instituicao, i.sigla, i.acronimo, i.razao_social
+      ];
+      for(const f of fields){
+        if(!f) continue;
+        const fStr = f.toString();
+        if(fStr.toLowerCase().indexOf(qLower) !== -1) return true;
+      }
+      // tokens e forma compacta do nome da instituição
+      const inst = (i.instituicao || i.nome_instituicao || '').toString();
+      if(inst){
+        const instUpper = inst.toUpperCase();
+        const tokens = instUpper.split(/[^A-Z0-9]+/).filter(Boolean);
+        if(tokens.includes(qUpper)) return true;
+        const compactInst = instUpper.replace(/[^A-Z0-9]/g,'');
+        if(compactInst.indexOf(qNorm) !== -1 || qNorm.indexOf(compactInst) !== -1) return true;
+      }
+      return false;
+    });
+  }catch(err){
+    return Array.isArray(DATA_ENTRIES) ? DATA_ENTRIES.slice() : [];
+  }
 }
 
 function populateUFs(){
@@ -109464,9 +109778,6 @@ document.addEventListener('DOMContentLoaded', ()=>{
         <li>Algumas turmas/edições podem ter reconhecimento diferente — verifique o edital ou contato da IES.</li>
         <li>Para segurança jurídica e profissional, sempre confirme antes de matrícula.</li>
         </ul>
-
-        <div style="font-size:13px;color:#666">Fontes e consulta oficial:</div>
-        <!-- removemos o link redundante aqui (mantemos apenas o botão de ação abaixo) -->
 
         <div class="actions">
         <!-- botão Fechar: texto explícito e aria-label para evitar invisibilidade -->
