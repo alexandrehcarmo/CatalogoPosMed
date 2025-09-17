@@ -1,0 +1,13 @@
+# netlify.toml — colocar na raiz do repo
+[build]
+  publish = "."
+
+[[headers]]
+  for = "/NAO_ENTRAM_CATALOGO.csv"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/INSTITUTION_LINKS.csv"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
