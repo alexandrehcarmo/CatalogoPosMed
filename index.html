@@ -108806,7 +108806,12 @@ const UFS = [
 /* Carrega CSV simples (uma coluna) e devolve Set de termos (em MAIÚSCULAS) */
 async function loadBlacklistCSV(filename='NAO_ENTRAM_CATALOGO.csv'){
   try {
-    const resp = await fetch(filename, {cache: 'no-cache'});
+
+    // adiciona parâmetro de cache-busting para forçar re-fetch (evita versão CDN obsoleta)
+    const bust = 'v=' + encodeURIComponent(new Date().toISOString());
+    const url = filename + (filename.indexOf('?') === -1 ? '?' + bust : '&' + bust);
+    const resp = await fetch(url, { cache: 'no-cache' });
+
     if(!resp.ok) throw new Error('arquivo não encontrado');
     let txt = await resp.text();
     // remove BOM se existir
@@ -108837,6 +108842,7 @@ function isExcludedByBlacklist(entry, blacklistSet){
 
 /* Substituição segura do DOMContentLoaded para carregar blacklist antes do render */
 document.addEventListener('DOMContentLoaded', async () => {
+
   // 1) carregar blacklist (arquivo NAO_ENTRAM_CATALOGO.csv localizado no mesmo diretório)
   window.BLACKLIST = await loadBlacklistCSV('NAO_ENTRAM_CATALOGO.csv');
 
@@ -108973,7 +108979,12 @@ function escapeHtml(s){
 async function loadInstitutionLinksCSV(filename='INSTITUTION_LINKS.csv'){
   const map = new Map();
   try{
-    const resp = await fetch(filename, {cache:'no-cache'});
+
+    // adiciona parâmetro de cache-busting para forçar re-fetch (evita versão CDN obsoleta)
+    const bust = 'v=' + encodeURIComponent(new Date().toISOString());
+    const url = filename + (filename.indexOf('?') === -1 ? '?' + bust : '&' + bust);
+    const resp = await fetch(url, { cache: 'no-cache' });
+
     if(!resp.ok) return map;
     let txt = await resp.text();
     txt = txt.replace(/^\uFEFF/,'');
