@@ -17,7 +17,7 @@
     input[type=search]{width:100%;padding:12px;border-radius:10px;border:1px solid #e6e9ec;font-size:15px}
     .btn{background:var(--brand);color:white;border:none;padding:10px 12px;border-radius:10px;font-size:15px;min-height:44px;display:inline-flex;align-items:center;justify-content:center;gap:8px}
     .filters-btn{background:#fff;border:1px solid #e6e9ec;color:var(--brand);}
-    .layout{display:grid;grid-template-columns:260px 1fr;gap:12px;margin-top:12px}
+    .layout{display:grid;grid-template-columns:260px minmax(0,1fr) 260px;gap:12px;margin-top:12px}
     .panel{background:#fff;padding:12px;border-radius:10px;border:1px solid #eee}
     .toc-list{max-height:640px;overflow:auto;padding-left:6px}
     .card{padding:12px;border-bottom:1px solid #f2f2f2;display:flex;flex-direction:column}
@@ -27,7 +27,8 @@
     .pager{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;justify-content:center}
     .pager button{padding:8px 10px;border-radius:8px;border:none;background:#e9f3f8;color:#0b5d8a}
     .pager button.active{background:#0b5d8a;color:#fff}
-    @media(max-width:900px){ .layout{grid-template-columns:1fr} .toc-list{max-height:220px} }
+    @media(max-width:900px){ .layout{grid-template-columns:1fr} .toc-list{max-height:220px} #right_panel{display:none;} }
+    #top_courses_list{max-height:640px;overflow:auto;padding-left:6px}
     </style>
     
     <!-- Inicio: ajustes responsivos adicionados -->
@@ -89,21 +90,20 @@
     </div>
 
     <div class="layout">
+      
       <aside class="panel" id="left_panel">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <strong>Índice (por UF)</strong>
           <span class="small">Rápido</span>
         </div>
         <div class="toc-list" id="toc_by_uf" style="margin-top:12px"></div>
-<!-- INÍCIO: Top 10 - Instituições mais buscadas (base: catálogo) -->
-<div style="margin-top:14px">
-  <strong>Top 10 - Instituições mais buscadas (por oferta)</strong>
-  <div id="top10_list" style="margin-top:8px;color:#333;font-size:13px">
-    <div class="small" id="top10_status">Gerando Top 10 local...</div>
-  </div>
-</div>
-<!-- FIM: Top 10 -->
-
+        <!-- Top 10 - Instituições  -->
+        <div style="margin-top:14px">
+          <strong>Top 10 - Instituições mais buscadas (por oferta)</strong>
+          <div id="top10_list" style="margin-top:8px;color:#333;font-size:13px">
+            <div class="small" id="top10_status">Gerando Top 10 local...</div>
+          </div>
+        </div>
       </aside>
 
       <main class="panel" id="main_panel">
@@ -112,8 +112,20 @@
         <div class="pager" id="pager"></div>
       </main>
     </div>
+    
+    <aside class="panel" id="right_panel">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <!-- Top 10 - Cursos -->
+        <strong>Top 10 - Cursos (por cobertura)</strong>
+        <span class="small">Rápido</span>
+      </div>
+      <div id="top_courses_list" style="margin-top:12px;color:#333;font-size:13px">
+        <div class="small" id="top_courses_status">Gerando Top 10 local...</div>
+      </div>
+    </aside>
+    
     <footer style="margin-top:18px;text-align:center;color:var(--mut);font-size:12px;padding:8px">
-    Catálogo de Pós Médicas Lato Sensu reconhecidas pelo MEC* - Desenvolvido por Alexandre Carmo - Todos os Direitos Reservados - 2025/09 v3.
+    Catálogo de Pós Médicas Lato Sensu reconhecidas pelo MEC* - Desenvolvido por Alexandre Carmo - Todos os Direitos Reservados - 2025/09 v4.
     &nbsp; <a id="mec_info_link" href="#" style="color: #0b5d8a; text-decoration: underline; margin-left:10px;">*Saiba mais sobre reconhecimento pelo MEC</a>
     </footer>
 
@@ -109113,7 +109125,6 @@ function renderTop10(resultObj) {
     const cursosHtml = (inst.courses || []).slice(0,8).map(c => {
       const variantBadge = c.variants && c.variants>1 ? ' <span style=\"color:#666;font-size:12px\">['+c.variants+' var.]</span>' : '';
       return '<div style="font-size:12px;margin-top:6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;max-width:420px;line-height:1.15em">• <strong>'+escapeHtml((c.canonical||'').toString().toUpperCase())+'</strong>'+variantBadge+'</div>';
-
     }).join('');
     // institution name clickable using data attribute (no inline onclick)
     const instSafe = encodeURIComponent(inst.name || '');
@@ -109144,54 +109155,44 @@ function renderTop10(resultObj) {
 
   // update right-side global courses sidebar (top 10)
   try{
-    renderGlobalCourseSidebar(resultObj.globalCourseRanking || []);
-  }catch(e){ console.warn('renderGlobalCourseSidebar failed', e); }
-
+    renderTopCourses(resultObj.globalCourseRanking || []);
+  }
 }
 
-// Render a right-side floating sidebar with top courses (10) clickable to trigger search
-function renderGlobalCourseSidebar(globalRanking){
-
-  const max = 10;
-  let side = document.getElementById('top_courses_sidebar');
-  if(!side){
-    side = document.createElement('div');
-    side.id = 'top_courses_sidebar';
-    // fixed at right, non-closable, minimal visual impact
-    side.style.cssText = 'position:fixed;right:18px;top:120px;width:300px;max-height:70vh;overflow:auto;background:#fff;padding:10px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,0.08);z-index:9998;font-size:13px';
-    side.innerHTML = '<div style=\"display:flex;flex-direction:column\"><strong>Top 10 - Cursos (por cobertura)</strong><div id=\"top_courses_body\" style=\"margin-top:8px\">Carregando...</div></div>';
-    document.body.appendChild(side);
-  }
-  const body = document.getElementById('top_courses_body');
-  if(!body) return;
+function renderTopCourses(globalRanking, limit=10) {
+  const wrap = document.getElementById('top_courses_list');
+  if (!wrap) return;
   if(!Array.isArray(globalRanking) || globalRanking.length === 0){
-    body.innerHTML = '<div class=\"small\">Sem dados</div>';
+    wrap.innerHTML = '<div class="small">Nenhuma informação.</div>';
     return;
   }
-  const list = globalRanking.slice(0,max).map((g,i)=> {
+  const list = globalRanking.slice(0, limit);
+  const rows = list.map((g, idx) => {
     const label = g.norm;
     const safe = encodeURIComponent(label);
-    return '<div style=\"margin-bottom:8px\"><a href=\"#\" class=\"top-course\" data-course=\"'+safe+'\" style=\"text-decoration:none;color:#1a0dab\">'+(i+1)+'. '+escapeHtml(label)+'</a> <span style=\"color:#666;font-size:12px\">('+g.statesCount+' estados)</span></div>';
+    return '<div style="padding:8px 6px;border-bottom:1px solid #eee">' +
+      '<div style="font-weight:700">' + (idx+1) + '. <a href="#" class="top-course" data-course="' + safe + '" style="text-decoration:none;color:inherit">' + escapeHtml(label) + '</a> <span style="font-weight:400;color:#666;font-size:12px">(' + g.statesCount + ' estados)</span></div>' +
+    '</div>';
   }).join('');
-  body.innerHTML = list;
 
-  // attach listeners for courses
+  wrap.innerHTML = rows;
+  const st = document.getElementById('top_courses_status');
+  if (st) st.style.display = 'none';
+
+  // attach click listeners for courses (event delegation safe)
   try{
-    side.querySelectorAll('.top-course').forEach(a=>{
-      a.addEventListener('click', function(ev){
-        ev.preventDefault();
-        const qv = decodeURIComponent(this.dataset.course || '');
-        triggerSearch(qv);
+    const wrapEl = document.getElementById('top_courses_list');
+    if(wrapEl){
+      wrapEl.querySelectorAll('.top-course').forEach(a=>{
+        a.addEventListener('click', function(ev){
+          ev.preventDefault();
+          const qv = decodeURIComponent(this.dataset.course || '');
+          triggerSearch(qv);
+        });
       });
-    });
+    }
   }catch(e){ console.warn('attach top-course listeners failed', e); }
-
 }
-// --- FIM: ranking local avançado (corrigido) ---
-
-
-
-
 
 function renderUfsFooter(ufsArray, targetSelector='#footer-ufs'){
   const el = document.querySelector(targetSelector);
@@ -109199,7 +109200,7 @@ function renderUfsFooter(ufsArray, targetSelector='#footer-ufs'){
   const parts = (ufsArray||[]).map(o => `${escapeHtml(String(o.uf))}: ${Number(o.count||0)}`);
   el.innerHTML = parts.join(' &bull; ');
 }
-/* === FIM ADICIONADO === */
+ 
 function uniq(arr){ return Array.from(new Set(arr)).sort(); }
 
 const q = document.getElementById('q');
@@ -109754,6 +109755,9 @@ printBtn.addEventListener('click', ()=>{ document.querySelector('.layout').style
 
 document.addEventListener('DOMContentLoaded', ()=>{
   populateUFs();
+  const topResult = computeTop10FromCatalog();
+  renderTop10(topResult);
+  renderTopCourses(topResult.globalCourseRanking || []);
   setTimeout(()=> applyFiltersAndRender(), 50);
   // applyFiltersAndRender();
   window.addEventListener('resize', ()=>{ state.perPage = perPageForWidth(); applyFiltersAndRender(); });
