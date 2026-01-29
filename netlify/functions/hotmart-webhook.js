@@ -1,45 +1,44 @@
-import { createUser, deleteUser } from './firebase-utils.js';
+import { createUser, deleteUser } from "./firebase-utils.js";
 
 export async function handler(event) {
-  if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      body: 'Method Not Allowed'
-    };
-  }
+  try {
+    const body = JSON.parse(event.body);
 
-  const payload = JSON.parse(event.body || '{}');
-  const eventType = payload.event;
-  const email = payload?.data?.customer?.email;
+    const eventType = body.event;
+    const email = body?.data?.buyer?.email;
 
-  if (!email) {
-    return {
-      statusCode: 400,
-      body: 'Email não encontrado no payload'
-    };
-  }
+    if (!email) {
+      return {
+        statusCode: 400,
+        body: "Email não encontrado no payload",
+      };
+    }
 
-  // COMPRA APROVADA
-  if (eventType === 'TRANSACTION.APPROVED') {
-    await createUser(email);
+    if (eventType === "PURCHASE_APPROVED") {
+      await createUser(email);
+      return {
+        statusCode: 200,
+        body: "Usuário criado",
+      };
+    }
+
+    if (eventType === "PURCHASE_REFUNDED") {
+      await deleteUser(email);
+      return {
+        statusCode: 200,
+        body: "Usuário removido",
+      };
+    }
+
     return {
       statusCode: 200,
-      body: 'Usuário criado'
+      body: "Evento ignorado",
     };
-  }
-
-  // REEMBOLSO
-  if (eventType === 'TRANSACTION.REFUNDED') {
-    await deleteUser(email);
+  } catch (err) {
+    console.error(err);
     return {
-      statusCode: 200,
-      body: 'Usuário removido'
+      statusCode: 500,
+      body: "Erro interno",
     };
   }
-
-  // QUALQUER OUTRO EVENTO
-  return {
-    statusCode: 200,
-    body: 'Evento ignorado'
-  };
 }
