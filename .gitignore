@@ -1,0 +1,46 @@
+# Ignorar arquivos do Word
+*.docx
+
+# Ignorar arquivos de texto temporários ou rascunhos
+*.txt
+
+# Ignorar arquivos ZIP
+*.zip
+
+# Ignorar pastas internas não relacionadas ao projeto final
+config/
+data/
+design/
+docs/
+export/
+MANUS/
+node_modules/
+scripts/
+BKP/
+
+# Ignorar arquivos do OneDrive, caso existam
+*.lnk
+~$*
+*.pdf
+*.rar
+
+# Ignorar configurações locais do VS Code (opcional)
+.vscode/
+
+# Local Netlify folder
+.netlify
+
+
+# Node
+node_modules/
+
+# Netlify local
+.netlify/
+
+# Firebase secrets
+firebase-key.json
+**/firebase-key.json
+
+# Environment files
+.env
+.env.*
