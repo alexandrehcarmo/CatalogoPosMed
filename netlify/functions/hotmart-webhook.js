@@ -1,7 +1,7 @@
 import { createUser, deleteUser } from "./firebase-utils.js";
-import nodemailer from "nodemailer"; // enviar emails
+import nodemailer from "nodemailer";
 
-// Gera senha aleatória segura
+// Gera senha aleatória
 function generatePassword(length = 12) {
   const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()";
   let password = "";
@@ -11,24 +11,29 @@ function generatePassword(length = 12) {
   return password;
 }
 
-// Configuração do email (SMTP)
+// Configuração do email
 const transporter = nodemailer.createTransport({
-  service: "gmail", // ou outro serviço SMTP
+  service: "gmail",
   auth: {
-    user: process.env.EMAIL_USER, // criar variável de ambiente no Netlify
-    pass: process.env.EMAIL_PASS, // senha ou token SMTP
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
   },
 });
 
-// Função para enviar email com a senha
+// Envia email com senha
 async function sendPasswordEmail(to, password) {
-  const mailOptions = {
-    from: process.env.EMAIL_USER,
-    to,
-    subject: "Sua conta no Catálogo de Pós Médicas",
-    text: `Olá!\n\nSua conta foi criada automaticamente.\n\nEmail: ${to}\nSenha: ${password}\n\nAcesse aqui: https://catposmedicas.netlify.app/login.html`,
-  };
-  await transporter.sendMail(mailOptions);
+  try {
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to,
+      subject: "Sua conta no Catálogo de Pós Médicas",
+      text: `Olá!\n\nSua conta foi criada automaticamente.\n\nEmail: ${to}\nSenha: ${password}\n\nAcesse: https://catposmedicas.netlify.app/login.html`,
+    };
+    await transporter.sendMail(mailOptions);
+  } catch (err) {
+    console.error("Erro ao enviar email:", err);
+    // Não interrompe a função
+  }
 }
 
 export async function handler(event) {
@@ -37,55 +42,42 @@ export async function handler(event) {
 
     // Validação do token
     if (body.hottok !== process.env.HOTMART_TOKEN) {
-      return {
-        statusCode: 401,
-        body: "Token inválido",
-      };
+      return { statusCode: 401, body: "Token inválido" };
     }
 
     const eventType = body.event;
     const email = body?.data?.buyer?.email;
 
     if (!email) {
-      return {
-        statusCode: 400,
-        body: "Email não encontrado no payload",
-      };
+      return { statusCode: 400, body: "Email não encontrado no payload" };
     }
 
     if (eventType === "PURCHASE_APPROVED") {
-      // Gera senha aleatória
-      const password = generatePassword();
-
-      // Cria usuário com senha
-      await createUser(email, password);
-
-      // Envia email com senha
-      await sendPasswordEmail(email, password);
-
-      return {
-        statusCode: 200,
-        body: "Usuário criado e email enviado",
-      };
+      try {
+        const password = generatePassword();
+        await createUser(email, password);
+        await sendPasswordEmail(email, password);
+        console.log(`Usuário criado e email enviado: ${email}`);
+      } catch (err) {
+        console.error("Erro na criação de usuário ou envio de email:", err);
+        // Continua mesmo que dê erro para evitar 502
+      }
+      return { statusCode: 200, body: "Usuário processado (veja logs para detalhes)" };
     }
 
     if (eventType === "PURCHASE_REFUNDED") {
-      await deleteUser(email);
-      return {
-        statusCode: 200,
-        body: "Usuário removido",
-      };
+      try {
+        await deleteUser(email);
+        console.log(`Usuário removido: ${email}`);
+      } catch (err) {
+        console.error("Erro ao remover usuário:", err);
+      }
+      return { statusCode: 200, body: "Usuário processado (veja logs para detalhes)" };
     }
 
-    return {
-      statusCode: 200,
-      body: "Evento ignorado",
-    };
+    return { statusCode: 200, body: "Evento ignorado" };
   } catch (err) {
-    console.error(err);
-    return {
-      statusCode: 500,
-      body: "Erro interno",
-    };
+    console.error("Erro interno do webhook:", err);
+    return { statusCode: 200, body: "Webhook recebeu evento, mas houve erro interno (veja logs)" };
   }
 }
