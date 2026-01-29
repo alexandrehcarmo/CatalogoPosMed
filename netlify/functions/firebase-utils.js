@@ -1,40 +1,36 @@
-import admin from 'firebase-admin';
-import fs from 'fs';
-import path from 'path';
+import admin from "firebase-admin";
 
-// Caminho absoluto do Windows para o JSON do Firebase
-const serviceAccountPath = 'E:\\PROJETOS PESSOAIS\\CatalogoPosMed\\netlify\\functions\\firebase-key.json';
-
-
-const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
-
-// Inicializa Firebase Admin
 if (!admin.apps.length) {
   admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-    databaseURL: 'https://catalogoposmed.firebaseio.com'
+    credential: admin.credential.cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+    }),
   });
 }
 
-// Função para criar usuário
+// Cria usuário no Firebase Auth
 export async function createUser(email) {
   try {
     const user = await admin.auth().createUser({ email });
-    console.log('Usuário criado:', email);
+    console.log("Usuário criado:", email);
     return user;
   } catch (error) {
-    console.error('Erro ao criar usuário:', error);
+    console.error("Erro ao criar usuário:", error);
+    throw error;
   }
 }
 
-// Função para deletar usuário
+// Remove usuário no Firebase Auth
 export async function deleteUser(email) {
   try {
     const user = await admin.auth().getUserByEmail(email);
     await admin.auth().deleteUser(user.uid);
-    console.log('Usuário deletado:', email);
+    console.log("Usuário deletado:", email);
     return true;
   } catch (error) {
-    console.error('Erro ao deletar usuário:', error);
+    console.error("Erro ao deletar usuário:", error);
+    throw error;
   }
 }
