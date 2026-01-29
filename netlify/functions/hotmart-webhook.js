@@ -4,6 +4,14 @@ export async function handler(event) {
   try {
     const body = JSON.parse(event.body);
 
+    // Validação do token
+    if (body.hottok !== process.env.HOTMART_TOKEN) {
+      return {
+        statusCode: 401,
+        body: "Token inválido",
+      };
+    }
+
     const eventType = body.event;
     const email = body?.data?.buyer?.email;
 
