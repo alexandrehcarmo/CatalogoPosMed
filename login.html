@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Login</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f5f5f5; margin:0; height:100vh; display:flex; justify-content:center; align-items:center; }
+    #loginModal { background:white; padding:30px; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.3); width:300px; }
+    input { width:100%; padding:8px; margin:8px 0; box-sizing:border-box; }
+    button { width:100%; padding:10px; background:#007BFF; color:white; border:none; border-radius:4px; cursor:pointer; }
+    button:hover { background:#0056b3; }
+    #errorMsg { color:red; font-size:0.9em; height:18px; }
+  </style>
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.16.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.16.0/firebase-auth-compat.js"></script>
+</head>
+<body>
+  <div id="loginModal">
+    <h3>Login</h3>
+    <div id="errorMsg"></div>
+    <input type="email" id="email" placeholder="Email">
+    <input type="password" id="password" placeholder="Senha">
+    <button onclick="login()">Entrar</button>
+  </div>
+
+  <script>
+    // Configuração Firebase
+    const firebaseConfig = {
+      apiKey: "AIzaSyC43xY1PFMULQDx1wRZtnQG0JepeHTdZF4",
+      authDomain: "catalogoposmed.firebaseapp.com",
+      projectId: "catalogoposmed",
+    };
+
+    // Inicializa Firebase
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+
+    async function login() {
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
+      const errorMsg = document.getElementById("errorMsg");
+      errorMsg.textContent = "";
+
+      if (!email || !password) {
+        errorMsg.textContent = "Preencha email e senha";
+        return;
+      }
+
+      try {
+        await auth.signInWithEmailAndPassword(email, password);
+        // Login OK, redireciona para a página principal
+        window.location.href = "https://catposmedicas.netlify.app/index.html";
+      } catch (error) {
+        errorMsg.textContent = "Email ou senha inválido";
+        console.error(error);
+      }
+    }
+
+    // Mantém usuário logado ao recarregar
+    auth.onAuthStateChanged(user => {
+      if (user) {
+        window.location.href = "https://catposmedicas.netlify.app/index.html";
+      }
+    });
+  </script>
+</body>
+</html>

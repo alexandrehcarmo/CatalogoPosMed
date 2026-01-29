@@ -1,4 +1,6 @@
 import admin from "firebase-admin";
+
+// Inicialização do Firebase Admin
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.cert({
@@ -10,9 +12,11 @@ if (!admin.apps.length) {
 }
 
 // Cria usuário no Firebase Auth
-export async function createUser(email) {
+export async function createUser(email, password) {
   try {
-    const user = await admin.auth().createUser({ email });
+    // Se password não for fornecida, cria usuário apenas com email
+    const userData = password ? { email, password } : { email };
+    const user = await admin.auth().createUser(userData);
     console.log("Usuário criado:", email);
     return user;
   } catch (error) {
